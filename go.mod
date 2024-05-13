@@ -1,4 +1,4 @@
-module broadBanBot
+module github.com/TheTipo01/broadBanBot
 
 go 1.22
 
