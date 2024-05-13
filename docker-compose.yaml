@@ -1,0 +1,9 @@
+version: '3.9'
+services:
+  bot:
+    image: thetipo01/broadbanbot
+    restart: always
+    volumes:
+      - ./config.yml:/config.yml
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro

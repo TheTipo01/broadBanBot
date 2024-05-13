@@ -1,0 +1,8 @@
+token: your:token
+loglevel: debug
+
+#driver: mysql
+#dsn: user:pass@tcp(host:3306)/databaseName
+
+driver: sqlite
+dsn: ./data.db
