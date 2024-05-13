@@ -7,15 +7,18 @@ import (
 	"github.com/kkyr/fig"
 	tele "gopkg.in/telebot.v3"
 	_ "modernc.org/sqlite"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var (
-	token  string
-	db     *sql.DB
-	bans   map[int]map[int64]bool
-	groups map[int64]int
+	token       string
+	db          *sql.DB
+	bans        map[int64]map[int64]bool
+	setToGroups map[int64][]int64
+	groupToSet  map[int64]int64
+	groupsCache map[int64]*tele.Chat
 )
 
 func init() {
@@ -48,7 +51,8 @@ func init() {
 	execQuery(tblGroup, tblBan, idxGroup, idxBan)
 
 	bans = loadBans()
-	groups = loadGroups()
+	setToGroups, groupToSet = loadGroups()
+	groupsCache = make(map[int64]*tele.Chat)
 }
 
 func main() {
@@ -62,23 +66,27 @@ func main() {
 
 	b.Handle("/ban", ban)
 	b.Handle(tele.OnUserJoined, userJoined)
+	b.Handle(&tele.InlineButton{Unique: "unbanBtn"}, unban)
 
+	lit.Info("broadBanBot ready to exterminate")
 	b.Start()
 }
 
 func userJoined(c tele.Context) error {
-	if bans[groups[c.Chat().ID]][c.Sender().ID] {
-		chatMember := &tele.ChatMember{
-			User: c.Sender(),
-			Rights: tele.Rights{
-				CanSendMessages: false,
-			},
-			RestrictedUntil: tele.Forever(),
-		}
+	for _, sender := range c.Message().UsersJoined {
+		if bans[groupToSet[c.Chat().ID]][sender.ID] {
+			chatMember := &tele.ChatMember{
+				User: &sender,
+				Rights: tele.Rights{
+					CanSendMessages: false,
+				},
+				RestrictedUntil: tele.Forever(),
+			}
 
-		err := c.Bot().Ban(c.Chat(), chatMember)
-		if err != nil {
-			lit.Error("Failed to ban user: %v", err)
+			err := c.Bot().Ban(c.Chat(), chatMember)
+			if err != nil {
+				lit.Error("Failed to ban user: %v", err)
+			}
 		}
 	}
 
@@ -86,6 +94,8 @@ func userJoined(c tele.Context) error {
 }
 
 func ban(c tele.Context) error {
+	var err error
+
 	if isAdmin(c) {
 		message := c.Message()
 		if message.ReplyTo == nil {
@@ -95,21 +105,72 @@ func ban(c tele.Context) error {
 
 		user := message.ReplyTo.Sender
 		chatMember := &tele.ChatMember{
-			User: user,
-			Rights: tele.Rights{
-				CanSendMessages: false,
-			},
+			User:            user,
 			RestrictedUntil: tele.Forever(),
 		}
 
-		// Add the user to the ban list
-		err := c.Bot().Ban(c.Chat(), chatMember)
-		if err != nil {
-			lit.Error("Failed to ban user: %v", err)
+		// Ban the user from every group within the set
+		for _, groupID := range setToGroups[groupToSet[c.Chat().ID]] {
+			if _, ok := groupsCache[groupID]; !ok {
+				groupsCache[groupID], err = c.Bot().ChatByID(groupID)
+				if err != nil {
+					lit.Error("Error getting group %d: %v", groupID, err)
+				}
+			}
+
+			err = c.Bot().Ban(groupsCache[groupID], chatMember)
+			if err != nil {
+				lit.Error("Error banning user from group %d: %v", groupID, err)
+			}
 		}
 
-		saveBan(user.ID, groups[c.Chat().ID])
+		// Add the user to the ban list
+		saveBan(user.ID, groupToSet[c.Chat().ID])
+
+		button := tele.InlineButton{
+			Unique: "unbanBtn",
+			Text:   "Sbanna",
+			Data:   strconv.FormatInt(user.ID, 10) + "|" + strconv.FormatInt(groupToSet[c.Chat().ID], 10),
+		}
+
+		markup := &tele.ReplyMarkup{InlineKeyboard: [][]tele.InlineButton{{button}}}
+
+		err = c.Reply("L'utente è stato bannato dal Cosmo di UniTo.", markup)
 	}
 
-	return nil
+	return err
+}
+
+func unban(c tele.Context) error {
+	var err error
+
+	if isAdmin(c) {
+		data := strings.Split(c.Callback().Data, "|")
+		userID, _ := strconv.ParseInt(data[0], 10, 64)
+		setID, _ := strconv.ParseInt(data[1], 10, 64)
+
+		user := &tele.User{ID: userID}
+
+		// Unban the user from every group within the set
+		for _, groupID := range setToGroups[setID] {
+			if _, ok := groupsCache[groupID]; !ok {
+				groupsCache[groupID], err = c.Bot().ChatByID(groupID)
+				if err != nil {
+					lit.Error("Error getting group %d: %v", groupID, err)
+				}
+			}
+
+			err = c.Bot().Unban(groupsCache[groupID], user)
+			if err != nil {
+				lit.Error("Error unbanning user from group %d: %v", groupID, err)
+			}
+		}
+
+		// Remove the user from the ban list
+		deleteBan(userID, setID)
+
+		err = c.Edit("L'utente è stato sbannato dal Cosmo di UniTo.")
+	}
+
+	return err
 }
