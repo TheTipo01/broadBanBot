@@ -45,7 +45,7 @@ func init() {
 		panic(err)
 	}
 
-	execQuery(tblGroup, tblBan)
+	execQuery(tblGroup, tblBan, idxGroup, idxBan)
 
 	bans = loadBans()
 	groups = loadGroups()

@@ -3,8 +3,10 @@ package main
 import "github.com/bwmarrin/lit"
 
 const (
-	tblGroup = "CREATE TABLE `group` ( `groupID` INT(20) NOT NULL, `setID` INT(11) NOT NULL, PRIMARY KEY (`groupID`, `setID`), INDEX `setID` (`setID` );"
-	tblBan   = "CREATE TABLE `ban` ( `userID` INT(20) NOT NULL, `setID` INT(11) NOT NULL, PRIMARY KEY (`userID`, `setID`), INDEX `setID` (`setID`), CONSTRAINT `FK_ban_group` FOREIGN KEY (`setID`) REFERENCES `group` (`setID`) ON UPDATE NO ACTION ON DELETE NO ACTION );\n"
+	tblGroup = `CREATE TABLE "groups" ( groupID INTEGER NOT NULL, setID INTEGER NOT NULL, PRIMARY KEY (groupID, setID) );`
+	tblBan   = `CREATE TABLE bans ( userID INTEGER NOT NULL, setID INTEGER NOT NULL, PRIMARY KEY (userID, setID), FOREIGN KEY (setID) REFERENCES "group" (setID) ON DELETE NO ACTION );`
+	idxGroup = `CREATE INDEX idx_group_setID ON "groups"(setID);`
+	idxBan   = `CREATE INDEX idx_ban_setID ON bans(setID);`
 )
 
 // Executes a simple query
